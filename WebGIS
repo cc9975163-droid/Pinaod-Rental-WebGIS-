@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Barangay Pinaod, San Ildefonso, Bulacan Rental House WebGIS</title>
+
+  <!-- Leaflet CSS Engine -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- PapaParse JS for Live Google Sheets CSV Reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background-color: #f4f6f8;
+    }
+
+    /* Navigation Header */
+    header {
+      background-color: #1b4332;
+      color: white;
+      padding: 0.8rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      z-index: 1001;
+    }
+
+    header h2 {
+      font-size: 1.1rem;
+    }
+
+    /* Google Form Button */
+    .btn-form {
+      background: #2d6a4f;
+      color: white;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    .btn-form:hover {
+      background: #40916c;
+    }
+
+    /* Main Container */
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Sidebar Filter Panel */
+    .sidebar {
+      width: 320px;
+      background: white;
+      padding: 1.2rem;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+      z-index: 1000;
+      overflow-y: auto;
+    }
+
+    .sidebar h3 {
+      color: #1b4332;
+      font-size: 1.1rem;
+      border-bottom: 2px solid #2d6a4f;
+      padding-bottom: 5px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .filter-group label {
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: #444;
+    }
+
+    .filter-group select,
+    .filter-group input {
+      padding: 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .filter-group select:focus,
+    .filter-group input:focus {
+      border-color: #2d6a4f;
+    }
+
+    /* Map Element */
+    #map {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Popup Card Styling */
+    .popup-card {
+      width: 240px;
+      text-align: left;
+    }
+
+    .popup-card h4 {
+      color: #1b4332;
+      margin-bottom: 6px;
+      font-size: 1.05rem;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 4px;
+    }
+
+    .popup-card p {
+      font-size: 0.82rem;
+      color: #444;
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+
+    .price-tag {
+      font-weight: bold;
+      color: #d97706;
+      font-size: 0.95rem !important;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 0.75rem;
+    }
+    .status-meron { background-color: #d1fae5; color: #047857; }
+    .status-wala { background-color: #fee2e2; color: #b91c1c; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h2>Barangay Pinaod, San Ildefonso, Bulacan Rental House WebGIS</h2>
+    
+    <!-- LINK TO YOUR PUBLIC GOOGLE FORM -->
+    <a id="googleFormBtn" href="https://docs.google.com/forms/d/e/YOUR_GOOGLE_FORM_ID/viewform" target="_blank" class="btn-form">
+      + Submit / Update Vacancy Status
+    </a>
+  </header>
+
+  <!-- App Layout -->
+  <div class="main-container">
+
+    <!-- Interactive Sidebar Filters -->
+    <div class="sidebar">
+      <h3>Filter Properties</h3>
+
+      <div class="filter-group">
+        <label for="searchBar">Search House Name / Caretaker:</label>
+        <input type="text" id="searchBar" placeholder="Type property name or owner..." oninput="applyFilters()">
+      </div>
+
+      <div class="filter-group">
+        <label for="typeFilter">Type of Rental Housing:</label>
+        <select id="typeFilter" onchange="applyFilters()">
+          <option value="All">All Housing Types</option>
+          <option value="Dormitory">Dormitory</option>
+          <option value="Apartment">Apartment</option>
+          <option value="Boarding House">Boarding House</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="statusFilter">Current Availability Status:</label>
+        <select id="statusFilter" onchange="applyFilters()">
+          <option value="All">All Statuses</option>
+          <option value="Meron">Available (Meron)</option>
+          <option value="Wala">Full / Not Available (Wala)</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="maxPrice">Maximum Monthly Rate (₱):</label>
+        <input type="number" id="maxPrice" placeholder="e.g. 3000" oninput="applyFilters()">
+      </div>
+    </div>
+
+    <!-- Map View -->
+    <div id="map"></div>
+
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // Centered at Barangay Pinaod, San Ildefonso, Bulacan (15.034291, 121.025233)
+    const map = L.map('map').setView([15.034291, 121.025233], 15);
+
+    // OpenStreetMap Tile Layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors | Pinaod Housing WebGIS'
+    }).addTo(map);
+
+    let allMarkers = [];
+
+    // =========================================================================
+    // STEP 2: PASTE YOUR PUBLISHED GOOGLE SHEET CSV URL HERE:
+    // =========================================================================
+    const googleSheetCSVUrl = 'YOUR_PUBLISHED_GOOGLE_SHEET_CSV_URL_HERE';
+
+    // Default sample data displayed if the spreadsheet is not yet linked
+    const fallbackData = [
+      {
+        name: "KARL Rental House",
+        owner: "Karl Santos",
+        contact: "09123456789",
+        address: "Pinaod, San Ildefonso, Bulacan",
+        type: "Boarding House",
+        price: 2500,
+        status: "Meron",
+        rooms: "3 Beds",
+        lat: 15.034291,
+        lng: 121.025233
+      },
+      {
+        name: "GAB Apartments",
+        owner: "Gab Cruz",
+        contact: "09987654321",
+        address: "Near BASC, Pinaod, San Ildefonso, Bulacan",
+        type: "Apartment",
+        price: 4500,
+        status: "Wala",
+        rooms: "0 Rooms",
+        lat: 15.035500,
+        lng: 121.026000
+      }
+    ];
+
+    // Convert Address to Latitude / Longitude via Nominatim Geocoding
+    async function geocodeAddress(address) {
+      try {
+        const query = `${address}, San Ildefonso, Bulacan, Philippines`;
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+        }
+      } catch (err) {
+        console.error("Geocoding error:", err);
+      }
+      return { 
+        lat: 15.034291 + (Math.random() - 0.5) * 0.006, 
+        lng: 121.025233 + (Math.random() - 0.5) * 0.006 
+      };
+    }
+
+    // Display pins on the Leaflet map
+    function renderMapMarkers(items) {
+      allMarkers.forEach(m => map.removeLayer(m.markerInstance));
+      allMarkers = [];
+
+      items.forEach(item => {
+        if (!item.lat || !item.lng) return;
+
+        const isAvailable = (item.status || '').toLowerCase().includes('meron');
+        const badgeClass = isAvailable ? 'status-meron' : 'status-wala';
+
+        const popupContent = `
+          <div class="popup-card">
+            <h4>${item.name}</h4>
+            <p><strong>Owner/Caretaker:</strong> ${item.owner}</p>
+            <p><strong>Housing Type:</strong> ${item.type}</p>
+            <p class="price-tag">₱${Number(item.price).toLocaleString()} / month</p>
+            <p><strong>Availability:</strong> <span class="status-badge ${badgeClass}">${item.status}</span></p>
+            <p><strong>Available Beds/Rooms:</strong> ${item.rooms}</p>
+            <p><strong>Contact:</strong> ${item.contact}</p>
+            <p><strong>Address:</strong> ${item.address}</p>
+          </div>
+        `;
+
+        const marker = L.marker([item.lat, item.lng])
+          .addTo(map)
+          .bindPopup(popupContent);
+
+        allMarkers.push({
+          data: item,
+          markerInstance: marker
+        });
+      });
+    }
+
+    // Parse Live Google Sheets CSV
+    function loadGoogleSheetsData() {
+      if (!googleSheetCSVUrl || googleSheetCSVUrl.includes('YOUR_PUBLISHED_GOOGLE_SHEET')) {
+        renderMapMarkers(fallbackData);
+        return;
+      }
+
+      Papa.parse(googleSheetCSVUrl, {
+        download: true,
+        header: true,
+        complete: async function(results) {
+          const rawRows = results.data;
+          const parsedData = [];
+
+          for (let row of rawRows) {
+            const addressStr = row['Address'] || 'Pinaod, San Ildefonso, Bulacan';
+            
+            let coords = { lat: parseFloat(row['Latitude']), lng: parseFloat(row['Longitude']) };
+            if (isNaN(coords.lat) || isNaN(coords.lng)) {
+              coords = await geocodeAddress(addressStr);
+            }
+
+            parsedData.push({
+              name: row['Rental house name'] || row['Rental House Name'] || 'Unnamed Rental',
+              owner: row['Name of owner/caretaker'] || row['Name of Owner/Caretaker'] || 'N/A',
+              contact: row['Contact number'] || row['Contact Number'] || 'N/A',
+              address: addressStr,
+              type: row['Type of rental housing'] || row['Type of Rental Housing'] || 'Boarding House',
+              price: parseFloat(row['Monthly rental rate'] || row['Monthly Rental Rate']) || 0,
+              status: row['Current availability status (Meron/wala)'] || row['Current Availability Status'] || 'Meron',
+              rooms: row['Number of available room/beds'] || row['Number of Available Room/Beds'] || '1',
+              lat: coords.lat,
+              lng: coords.lng
+            });
+          }
+
+          renderMapMarkers(parsedData);
+        }
+      });
+    }
+
+    // Filter Logic
+    function applyFilters() {
+      const searchVal = document.getElementById('searchBar').value.toLowerCase().trim();
+      const typeVal = document.getElementById('typeFilter').value;
+      const statusVal = document.getElementById('statusFilter').value;
+      const maxPriceVal = parseFloat(document.getElementById('maxPrice').value);
+
+      allMarkers.forEach(itemObj => {
+        const d = itemObj.data;
+
+        const matchesSearch = d.name.toLowerCase().includes(searchVal) || d.owner.toLowerCase().includes(searchVal);
+        const matchesType = (typeVal === 'All' || d.type === typeVal);
+        const matchesStatus = (statusVal === 'All' || d.status.toLowerCase().includes(statusVal.toLowerCase()));
+        const matchesPrice = isNaN(maxPriceVal) || d.price <= maxPriceVal;
+
+        if (matchesSearch && matchesType && matchesStatus && matchesPrice) {
+          if (!map.hasLayer(itemObj.markerInstance)) {
+            map.addLayer(itemObj.markerInstance);
+          }
+        } else {
+          if (map.hasLayer(itemObj.markerInstance)) {
+            map.removeLayer(itemObj.markerInstance);
+          }
+        }
+      });
+    }
+
+    // Execute load
+    loadGoogleSheetsData();
+  </script>
+</body>
+</html>
